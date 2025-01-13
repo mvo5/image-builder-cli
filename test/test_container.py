@@ -52,3 +52,46 @@ def test_container_manifest_generates_sbom(tmp_path, build_container):
     sbom_json = json.loads(image_sbom_json_path.read_text())
     # smoke test that we have glibc in the json doc
     assert "glibc" in [s["name"] for s in sbom_json["Document"]["packages"]]
+
+
+@pytest.mark.skipif(os.getuid() != 0, reason="needs root")
+def test_container_with_host_resources(tmp_path, build_container):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    # include a file from the "host", because we use a container
+    # to build its a bit indirect
+    canary_data = "fromHost:canary data"
+    canary_path = output_dir / "fromHost_canary.txt"
+    canary_path.write_text(canary_data)
+    blueprint_path = output_dir / "blueprint.json"
+    blueprint_path.write_text("""
+        {
+      "customizations": {
+        "files": [
+          {
+            "path": "/etc/fromHost.txt",
+            "from_host": "/output/fromHost_canary.txt"
+          }
+        ]
+      }
+    }
+    """)
+    subprocess.check_call([
+        "podman", "run",
+        "--privileged",
+        "-v", f"{output_dir}:/output",
+        build_container,
+        "build",
+        "tar",
+        # XXX: pass blueprint via stdin?
+        "--blueprint=/output/blueprint.json",
+        "--distro", "centos-9"
+    ])
+    arch = "x86_64"
+    img_path = output_dir / f"centos-9-tar-{arch}/archive/root.tar.xz"
+    output = subprocess.check_output([
+        "tar", "xOf", os.fspath(img_path),
+        "./etc/fromHost.txt",
+    ], text=True)
+    assert output == canary_data
