@@ -52,3 +52,38 @@ def test_container_manifest_generates_sbom(tmp_path, build_container):
     sbom_json = json.loads(image_sbom_json_path.read_text())
     # smoke test that we have glibc in the json doc
     assert "glibc" in [s["name"] for s in sbom_json["Document"]["packages"]]
+
+
+@pytest.mark.skipif(os.getuid() != 0, reason="needs root")
+def test_container_offline_bundle(tmp_path, build_container):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    arch = "x86_64"
+
+    # create the bundle
+    bundle_dir = f"centos-9-minimal-raw-{arch}"
+    bundle_name = f"centos-9-minimal-raw-{arch}.osbuild-bundle"
+    subprocess.check_call([
+        "podman", "run",
+        "--privileged",
+        "-v", f"{output_dir}:/output",
+        build_container,
+        "make-bundle",
+        "minimal-raw",
+        "--distro", "centos-9",
+    ])
+    assert (output_dir / bundle_dir / bundle_name).exists()
+    assert not (output_dir / f"centos-9-minimal-raw-{arch}/xz/disk.raw.xz").exists()
+
+    # build the bundle
+    subprocess.check_call([
+        "podman", "run",
+        "--privileged",
+        # ensure this works without network
+        "--network", "none",
+        "-v", f"{output_dir}:/output",
+        build_container,
+        "build-bundle", f"/output/{bundle_dir}/{bundle_name}",
+    ])
+    # we expect a build image
+    assert (output_dir / f"centos-9-minimal-raw-{arch}/xz/disk.raw.xz").exists()

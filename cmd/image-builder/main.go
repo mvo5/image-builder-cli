@@ -184,6 +184,36 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 	return buildImage(res, mf.Bytes(), buildOpts)
 }
 
+func cmdMakeBundle(cmd *cobra.Command, args []string) error {
+	outputDir, err := cmd.Flags().GetString("output-dir")
+	if err != nil {
+		return err
+	}
+
+	var mf bytes.Buffer
+	// XXX: check env here, i.e. if user is root and osbuild is installed
+	res, err := cmdManifestWrapper(cmd, args, &mf, func(archStr string) error {
+		if archStr != arch.Current().String() {
+			return fmt.Errorf("cannot build for arch %q from %q", archStr, arch.Current().String())
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	return makeBundle(outputDir, res, mf.Bytes())
+}
+
+func cmdBuildBundle(cmd *cobra.Command, args []string) error {
+	outputDir, err := cmd.Flags().GetString("output-dir")
+	if err != nil {
+		return err
+	}
+
+	return buildBundle(outputDir, args[0])
+}
+
 func run() error {
 	// images logs a bunch of stuff to Debug/Info that is distracting
 	// the user (at least by default, like what repos being loaded)
@@ -245,6 +275,26 @@ operating sytsems like centos and RHEL with easy customizations support.`,
 	// XXX: add --rpmmd cache too and put under /var/cache/image-builder/dnf
 	buildCmd.Flags().String("cache", "/var/cache/image-builder/store", `osbuild directory to cache intermediate build artifacts"`)
 	rootCmd.AddCommand(buildCmd)
+
+	// XXX: name sucks
+	makeBundleCmd := &cobra.Command{
+		Use:          "make-bundle <image-type>",
+		Short:        "Make offline bundle for the given distro/image-type, e.g. centos-9 qcow2",
+		RunE:         cmdMakeBundle,
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
+	}
+	makeBundleCmd.Flags().AddFlagSet(manifestCmd.Flags())
+	rootCmd.AddCommand(makeBundleCmd)
+
+	buildBundleCmd := &cobra.Command{
+		Use:          "build-bundle <bundle-file>",
+		Short:        "Build the given offline bundle file",
+		RunE:         cmdBuildBundle,
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
+	}
+	rootCmd.AddCommand(buildBundleCmd)
 
 	return rootCmd.Execute()
 }
