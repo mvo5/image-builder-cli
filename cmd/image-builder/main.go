@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
+	"github.com/cheggaaa/pb/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
 	"github.com/osbuild/bootc-image-builder/bib/pkg/progress"
 	"github.com/osbuild/images/pkg/arch"
+	"github.com/osbuild/images/pkg/cloud/awscloud"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
@@ -156,6 +159,63 @@ func cmdManifest(cmd *cobra.Command, args []string) error {
 	return err
 }
 
+var awscloudNewUploader = awscloud.NewUploader
+
+func cmdUploadAWS(cmd *cobra.Command, args []string) error {
+	amiName, err := cmd.Flags().GetString("aws-ami-name")
+	if err != nil {
+		return err
+	}
+	bucketName, err := cmd.Flags().GetString("aws-bucket")
+	if err != nil {
+		return err
+	}
+	region, err := cmd.Flags().GetString("aws-region")
+	if err != nil {
+		return err
+	}
+
+	rawDiskPath := args[0]
+	// XXX: can we actually inspect the image or leave some artifacts?
+	if filepath.Ext(rawDiskPath) != ".raw" {
+		return fmt.Errorf("expecting a raw disk ending with '.raw', got %q", filepath.Base(rawDiskPath))
+	}
+
+	uploader, err := awscloudNewUploader(region, bucketName, amiName, nil)
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(rawDiskPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// setup basic progress
+	st, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat upload: %v", err)
+	}
+	pbar := pb.New64(st.Size())
+	pbar.Set(pb.Bytes, true)
+	pbar.SetWriter(osStdout)
+	r := pbar.NewProxyReader(f)
+	pbar.Start()
+	defer pbar.Finish()
+
+	return uploader.UploadAndRegister(r, osStderr)
+}
+
+func cmdUpload(cmd *cobra.Command, args []string) error {
+	imagePath := args[0]
+	switch filepath.Ext(imagePath) {
+	case ".raw":
+		return cmdUploadAWS(cmd, args)
+	default:
+		return fmt.Errorf("unsupported upload file %q", filepath.Base(imagePath))
+	}
+}
+
 func cmdBuild(cmd *cobra.Command, args []string) error {
 	cacheDir, err := cmd.Flags().GetString("cache")
 	if err != nil {
@@ -281,6 +341,18 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	manifestCmd.Flags().Bool("with-sbom", false, `export SPDX SBOM document`)
 	rootCmd.AddCommand(manifestCmd)
 
+	uploadCmd := &cobra.Command{
+		Use:          "upload <path>",
+		Short:        "Upload the given image from <path>",
+		RunE:         cmdUpload,
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
+	}
+	uploadCmd.Flags().String("aws-ami-name", "", "name for the AMI in AWS (only for type=ami)")
+	uploadCmd.Flags().String("aws-bucket", "", "target S3 bucket name for intermediate storage when creating AMI (only for type=ami)")
+	uploadCmd.Flags().String("aws-region", "", "target region for AWS uploads (only for type=ami)")
+	rootCmd.AddCommand(uploadCmd)
+
 	buildCmd := &cobra.Command{
 		Use:          "build <image-type>",
 		Short:        "Build the given image-type, e.g. qcow2 (tip: combine with --distro, --arch)",
@@ -295,6 +367,8 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	// XXX: add "--verbose" here, similar to how bib is doing this
 	// (see https://github.com/osbuild/bootc-image-builder/pull/790/commits/5cec7ffd8a526e2ca1e8ada0ea18f927695dfe43)
 	buildCmd.Flags().String("progress", "auto", "type of progress bar to use (e.g. verbose,term)")
+	// XXX: should we add "--upload-to" here which would map to
+	// "upload --to" ?
 	rootCmd.AddCommand(buildCmd)
 
 	// XXX: add --format=json too?

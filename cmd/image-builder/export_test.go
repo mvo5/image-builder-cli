@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/osbuild/images/pkg/cloud"
+	"github.com/osbuild/images/pkg/cloud/awscloud"
 	"github.com/osbuild/images/pkg/reporegistry"
 )
 
@@ -57,5 +59,13 @@ func MockDistroGetHostDistroName(f func() (string, error)) (restore func()) {
 	distroGetHostDistroName = f
 	return func() {
 		distroGetHostDistroName = saved
+	}
+}
+
+func MockAwscloudNewUploader(f func(string, string, string, *awscloud.UploaderOptions) (cloud.Uploader, error)) (restore func()) {
+	saved := awscloudNewUploader
+	awscloudNewUploader = f
+	return func() {
+		awscloudNewUploader = saved
 	}
 }
