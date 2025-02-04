@@ -196,7 +196,7 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var uploadUnsupported *UploadTypeUnsupportedError
-	uploader, err := uploaderFor(cmd, res.ImgType.Name(), "")
+	uploader, err := uploaderFor(cmd, res.ImgType.Name(), res.Distro.Name(), "")
 	if err != nil && err != ErrNoUploadConfig && !errors.As(err, &uploadUnsupported) {
 		return err
 	}
@@ -323,6 +323,11 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	uploadCmd.Flags().String("aws-ami-name", "", "name for the AMI in AWS (only for type=ami)")
 	uploadCmd.Flags().String("aws-bucket", "", "target S3 bucket name for intermediate storage when creating AMI (only for type=ami)")
 	uploadCmd.Flags().String("aws-region", "", "target region for AWS uploads (only for type=ami)")
+	uploadCmd.Flags().String("gce-obj-name", "", "name for the object in GCE")
+	uploadCmd.Flags().String("gce-bucket", "", "target GCE bucket name for intermediate storage when creating GCE image")
+	uploadCmd.Flags().String("gce-region", "", "target region for GCE uploads")
+	// depending on distro version different flags must be set
+	uploadCmd.Flags().String("gce-distro-name", "", "name of distro uploaded (e.g. centos-9)")
 	rootCmd.AddCommand(uploadCmd)
 
 	buildCmd := &cobra.Command{
