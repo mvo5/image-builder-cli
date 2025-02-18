@@ -33,7 +33,7 @@ jobs:
       - name: Install integration test env
         run: |
           sudo apt update
-          sudo apt install -y python3-pytest golang
+          sudo apt install -y python3-pytest golang qemu-user-static
 
       - name: Run integration tests via pytest
         run: |
