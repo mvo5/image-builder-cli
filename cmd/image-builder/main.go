@@ -78,7 +78,7 @@ func ostreeImageOptions(cmd *cobra.Command) (*ostree.ImageOptions, error) {
 	}, nil
 }
 
-func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, w io.Writer, archChecker func(string) error) (*imagefilter.Result, error) {
+func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, w io.Writer, needBootstrap func(string) bool) (*imagefilter.Result, error) {
 	dataDir, err := cmd.Flags().GetString("data-dir")
 	if err != nil {
 		return nil, err
@@ -150,12 +150,6 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 	if err != nil {
 		return nil, err
 	}
-	if archChecker != nil {
-		if err := archChecker(img.Arch.Name()); err != nil {
-			return nil, err
-		}
-	}
-
 	opts := &manifestOptions{
 		OutputDir:     outputDir,
 		BlueprintPath: blueprintPath,
@@ -165,6 +159,10 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 
 		ForceRepos: forceRepos,
 	}
+	if needBootstrap != nil {
+		opts.UseBootstrapContainer = needBootstrap(img.Arch.Name())
+	}
+
 	err = generateManifest(dataDir, extraRepos, img, w, opts)
 	return img, err
 }
@@ -227,11 +225,8 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 
 	var mf bytes.Buffer
 	// XXX: check env here, i.e. if user is root and osbuild is installed
-	res, err := cmdManifestWrapper(pbar, cmd, args, &mf, func(archStr string) error {
-		if archStr != arch.Current().String() {
-			return fmt.Errorf("cannot build for arch %q from %q", archStr, arch.Current().String())
-		}
-		return nil
+	res, err := cmdManifestWrapper(pbar, cmd, args, &mf, func(archStr string) bool {
+		return archStr != arch.Current().String()
 	})
 	if err != nil {
 		return err
