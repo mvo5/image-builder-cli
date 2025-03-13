@@ -20,6 +20,7 @@ import (
 	"github.com/osbuild/images/pkg/ostree"
 
 	"github.com/osbuild/image-builder-cli/internal/blueprintload"
+	"github.com/osbuild/image-builder-cli/internal/setup"
 )
 
 var (
@@ -316,6 +317,12 @@ func run() error {
 	// Disable for now until we can filter out the usless log
 	// messages.
 	logrus.SetOutput(io.Discard)
+
+	cleanup, err := setup.EnsureRootmount()
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 
 	rootCmd := &cobra.Command{
 		Use:   "image-builder",
