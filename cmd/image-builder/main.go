@@ -182,6 +182,11 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 }
 
 func cmdManifest(cmd *cobra.Command, args []string) error {
+	// bootc is so special
+	if cmdNeedsBootc(cmd) {
+		return cmdManifestBootc(cmd, args)
+	}
+
 	pbar, err := progress.New("")
 	if err != nil {
 		return err
@@ -207,6 +212,12 @@ func progressFromCmd(cmd *cobra.Command) (progress.ProgressBar, error) {
 }
 
 func cmdBuild(cmd *cobra.Command, args []string) error {
+	// bootc is so special
+	if cmdNeedsBootc(cmd) {
+		// XXX: handle upload here
+		return cmdBuildBootc(cmd, args)
+	}
+
 	cacheDir, err := cmd.Flags().GetString("cache")
 	if err != nil {
 		return err
@@ -370,6 +381,7 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	manifestCmd.Flags().String("ostree-ref", "", `OSTREE reference`)
 	manifestCmd.Flags().String("ostree-parent", "", `OSTREE parent`)
 	manifestCmd.Flags().String("ostree-url", "", `OSTREE url`)
+	manifestCmd.Flags().String("bootc-ref", "", `bootc reference`)
 	manifestCmd.Flags().Bool("use-librepo", true, `use librepo to download packages (disable if you use old versions of osbuild)`)
 	manifestCmd.Flags().Bool("with-sbom", false, `export SPDX SBOM document`)
 	rootCmd.AddCommand(manifestCmd)
