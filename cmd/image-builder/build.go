@@ -8,6 +8,8 @@ import (
 
 	"github.com/osbuild/bootc-image-builder/bib/pkg/progress"
 	"github.com/osbuild/images/pkg/imagefilter"
+
+	"github.com/osbuild/image-builder-cli/pkg/supermin"
 )
 
 type buildOptions struct {
@@ -52,9 +54,13 @@ func buildImage(pbar progress.ProgressBar, res *imagefilter.Result, osbuildManif
 
 		osbuildOpts.BuildLog = f
 	}
-	if err := progress.RunOSBuild(pbar, osbuildManifest, res.ImgType.Exports(), osbuildOpts); err != nil {
+
+	// XXX: detect if we actually need supermin, i.e. if we are root in
+	// a priviliged env we can just run without
+	if err := supermin.RunOSBuild(pbar, osbuildManifest, res.ImgType.Exports(), osbuildOpts); err != nil {
 		return "", err
 	}
+
 	// Rename *sigh*, see https://github.com/osbuild/images/pull/1039
 	// for my preferred way. Every frontend to images has to duplicate
 	// similar code like this.

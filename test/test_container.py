@@ -122,3 +122,28 @@ def test_container_cross_build(tmp_path, build_container, arch):
         f"--arch={arch}",
     ], text=True)
     assert os.path.exists(output_dir / f"fedora-41-container-{arch}.tar")
+
+
+@pytest.mark.skipif(os.getuid() == 0, reason="must not run as root")    
+def test_container_builds_image_non_root(tmp_path, build_container):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    subprocess.check_call([
+        "podman", "run",
+        # allow interactive debug
+        "-it", "--rm",
+        # XXX: or --device ?
+        "-v", "/dev/kvm:/dev/kvm",
+        "-v", f"{output_dir}:/output",
+        build_container,
+        "build",
+        "minimal-raw",
+        "--distro", "centos-9",
+        "--verbose",
+    ])
+    arch = "x86_64"
+    basename = f"centos-9-minimal-raw-{arch}"
+    assert (output_dir / basename / f"{basename}.raw.xz").exists()
+    # XXX: ensure no other leftover dirs
+    dents = os.listdir(output_dir)
+    assert len(dents) == 1, f"too many dentries in output dir: {dents}"
