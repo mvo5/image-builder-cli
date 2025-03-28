@@ -44,11 +44,14 @@ mount -t tmpfs tmpfs /run
 mknod /dev/loop-control c 10 237
 
 # prepare work dirs
-mkdir /output
-mount -t 9p osbuild_output /output
+mkdir /host-output
+mount -t 9p osbuild_output /host-output
+# output cannot be on 9p because permissions
+mkdir -p /output
+cp -r /host-output/* /output
+
 mkdir /host-store
 mount -t 9p osbuild_store /host-store
-
 # XXX: we cannot put /store on a 9pfs or osbuild becomes very unhappy
 echo "Populate /store from host"
 mkdir /store
@@ -60,15 +63,15 @@ osbuild \
 # copy stuff back to host store
 cp -R /store/* /host-store
 
-# XXX: pass exports from RunOSBuild here
+# XXX: trigger crash on error? how to transmit exit status?
 echo "Running osbuild"
 osbuild \
   --export %s \
   --output-directory /output \
   --cache /store \
-  /output/manifest.json
-
-# XXX: trigger crash on error? how to transmit exit status?
+  /host-output/manifest.json
+echo "Copy result to host"
+cp -r /output/* /host-output/
 
 # trigger clean shutdown via sysreq
 echo s > /proc/sysrq-trigger
@@ -174,6 +177,7 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 	// /var/cache/image-builder otherwise
 	if os.Getuid() != 0 {
 		opts.StoreDir = ".store"
+		os.MkdirAll(".store", 0755)
 	}
 
 	// run qemu
