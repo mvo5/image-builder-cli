@@ -16,6 +16,8 @@ var superminInitScriptFmt = `#!/bin/sh
 
 set -e
 
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
 mount -t proc /proc /proc
 mount -t sysfs /sys /sys
 mount -t cgroup2 cgroup2 -o rw,nosuid,nodev,noexec,relatime,seclabel,nsdelegate,memory_recursiveprot /sys/fs/cgroup
@@ -131,6 +133,8 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 		"kernel-modules",
 		// osbuild and friends
 		"osbuild", "osbuild-depsolve-dnf", "osbuild-lvm2", "osbuild-luks2", "osbuild-ostree",
+		// lvm
+		"lvm2",
 		// target"
 		"-o", superminPrepareDir,
 	)

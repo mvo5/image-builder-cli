@@ -20,7 +20,7 @@ RUN mkdir -p /etc/containers/networks
 RUN dnf install -y dnf-plugins-core \
     && dnf copr enable -y @osbuild/osbuild \
     && dnf install -y libxcrypt-compat wget osbuild osbuild-ostree osbuild-depsolve-dnf osbuild-lvm2 supermin qemu-kvm podman \
-    iproute dhcp-client kernel \
+    iproute dhcp-client kernel lvm2 \
     && dnf clean all
 
 COPY --from=builder /build/image-builder /usr/bin/
