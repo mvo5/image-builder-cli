@@ -46,11 +46,18 @@ mknod /dev/loop-control c 10 237
 # prepare work dirs
 mkdir /output
 mount -t 9p osbuild_output /output
+mkdir /host-store
+mount -t 9p osbuild_store /host-store
+
+# XXX: we cannot put /store on a 9pfs or osbuild becomes very unhappy
+echo "Populate /store from host"
 mkdir /store
-mount -t 9p osbuild_store /store
+cp -vR /host-store/* /store
+# XXX2: copy store stuff back?
 
 # XXX: pass exports from RunOSBuild here
-osbuild --export image \
+osbuild \
+  --export image \
   --output-directory /output \
   --cache /store \
   /output/manifest.json
@@ -94,12 +101,15 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 		return err
 	}
 
+	// XXX: could/should we instead ship a pre-build supermin appliance?
 	// prepare supermin
 	cmd := exec.Command(
 		"supermin", "--prepare", "--use-installed",
 		// XXX: external pkglist like COSA?osbuild
 		// XXX2: double check list
 		//
+		// fundamental
+		"util-linux",
 		// basic networking
 		"ca-certificates", "dhcp-client", "iproute",
 		// loop-device support
