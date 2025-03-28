@@ -74,6 +74,7 @@ osbuild \
   /host-output/manifest.json
 echo "Copy result to host"
 cp -r /output/* /host-output/
+sync
 
 # trigger clean shutdown via sysreq
 echo s > /proc/sysrq-trigger
