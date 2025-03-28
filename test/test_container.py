@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import subprocess
+import textwrap
 
 import pytest
 
@@ -128,21 +129,40 @@ def test_container_cross_build(tmp_path, build_container, arch):
 def test_container_builds_image_non_root(tmp_path, build_container):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
+    bp = output_dir / "bp.toml"
+    bp.write_text(textwrap.dedent("""\
+    [[customizations.disk.partitions]]
+    type = "lvm"
+    name = "mainvg"
+    minsize = "20 GiB"
+
+    [[customizations.disk.partitions.logical_volumes]]
+    name = "datalv"
+    mountpoint = "/data"
+    fs_type = "ext4"
+    minsize = "2 GiB"
+    """))
+
+    os.makedirs("./store", exist_ok=True)
     subprocess.check_call([
         "podman", "run",
         # allow interactive debug
         "-it", "--rm",
         # XXX: or --device ?
         "-v", "/dev/kvm:/dev/kvm",
-        "-v", "/var/cache/image-builder/store:/var/cache/image-builder/store",
+        # map for faster downloads
+        "-v", "./store:/var/cache/image-builder/store",
         "-v", f"{output_dir}:/output",
         build_container,
         "build",
-        # XXX: or minimal-raw?
-        "container",
+        "--blueprint", "/output/bp.toml",
+        # XXX: or minimal raw?
+        "minimal-raw",
         "--distro", "centos-9",
         "--verbose",
     ])
+    bp.unlink()
+
     arch = "x86_64"
     basename = f"centos-9-minimal-raw-{arch}"
     assert (output_dir / basename / f"{basename}.raw.xz").exists()
