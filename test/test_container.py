@@ -156,16 +156,16 @@ def test_container_builds_image_non_root(tmp_path, build_container):
         build_container,
         "build",
         "--blueprint", "/output/bp.toml",
-        # XXX: or minimal raw?
-        "minimal-raw",
+        # XXX: qcow2 is faster tan minimal raw (xz is slow)
+        "qcow2",
         "--distro", "centos-9",
         "--verbose",
     ])
     bp.unlink()
 
     arch = "x86_64"
-    basename = f"centos-9-minimal-raw-{arch}"
-    assert (output_dir / basename / f"{basename}.raw.xz").exists()
+    basename = f"centos-9-qcow2-{arch}"
+    assert (output_dir / basename / f"{basename}.qcow2").exists()
     # XXX: ensure no other leftover dirs
     dents = os.listdir(output_dir)
     assert len(dents) == 1, f"too many dentries in output dir: {dents}"
