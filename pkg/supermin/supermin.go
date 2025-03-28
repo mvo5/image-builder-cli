@@ -10,7 +10,7 @@ import (
 	"github.com/osbuild/bootc-image-builder/bib/pkg/progress"
 )
 
-var superminInitScript = `#!/bin/sh
+var superminInitScriptFmt = `#!/bin/sh
 # inspired by https://github.com/coreos/coreos-assembler/blob/main/src/supermin-init-prelude.sh
 # we need less because osbuild does most of its work via buildroots
 
@@ -52,12 +52,18 @@ mount -t 9p osbuild_store /host-store
 # XXX: we cannot put /store on a 9pfs or osbuild becomes very unhappy
 echo "Populate /store from host"
 mkdir /store
-cp -vR /host-store/* /store
-# XXX2: copy store stuff back?
+cp -R /host-store/* /store || true
+# fetch sources
+osbuild \
+  --cache /store \
+  /output/manifest.json
+# copy stuff back to host store
+cp -R /store/* /host-store
 
 # XXX: pass exports from RunOSBuild here
+echo "Running osbuild"
 osbuild \
-  --export image \
+  --export %s \
   --output-directory /output \
   --cache /store \
   /output/manifest.json
@@ -71,7 +77,7 @@ echo o > /proc/sysrq-trigger
 sleep 999
 `
 
-func addInitTar(superminDir string) error {
+func addInitTar(superminDir, superminInitScript string) error {
 	initTarF, err := os.Create(filepath.Join(superminDir, "init.tgz"))
 	if err != nil {
 		return err
@@ -100,6 +106,12 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 	if err != nil {
 		return err
 	}
+	defer os.RemoveAll(superminPrepareDir)
+
+	if len(exports) != 1 {
+		return fmt.Errorf("only a single export supported right now")
+	}
+	superminInitScript := fmt.Sprintf(superminInitScriptFmt, exports[0])
 
 	// XXX: could/should we instead ship a pre-build supermin appliance?
 	// prepare supermin
@@ -124,7 +136,7 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("supermin prepare failed: %w", err)
 	}
-	if err := addInitTar(superminPrepareDir); err != nil {
+	if err := addInitTar(superminPrepareDir, superminInitScript); err != nil {
 		return err
 	}
 
@@ -133,6 +145,8 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 	if err != nil {
 		return err
 	}
+	defer os.RemoveAll(superminDir)
+
 	cmd = exec.Command(
 		"supermin",
 		"--build", superminPrepareDir,
