@@ -184,6 +184,7 @@ func RunOSBuild(pb progress.ProgressBar, manifest []byte, exports []string, opts
 	cmd = exec.Command(
 		"qemu-kvm",
 		"-nodefaults", "-nographic",
+		"-cpu", "host",
 		// XXX: what is the right size
 		"-m", "2048",
 		"-accel", "kvm",

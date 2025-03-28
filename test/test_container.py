@@ -134,10 +134,12 @@ def test_container_builds_image_non_root(tmp_path, build_container):
         "-it", "--rm",
         # XXX: or --device ?
         "-v", "/dev/kvm:/dev/kvm",
+        "-v", "/var/cache/image-builder/store:/var/cache/image-builder/store",
         "-v", f"{output_dir}:/output",
         build_container,
         "build",
-        "minimal-raw",
+        # XXX: or minimal-raw?
+        "container",
         "--distro", "centos-9",
         "--verbose",
     ])
