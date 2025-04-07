@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/sirupsen/logrus"
+	"github.com/syndtr/gocapability/capability"
 
 	"github.com/osbuild/images/pkg/datasizes"
 	"github.com/osbuild/images/pkg/osbuild"
@@ -28,11 +29,40 @@ type OSBuildOptions struct {
 	CacheMaxSize int64
 }
 
+// enoughPrivsForOsbuild() returns true if the current process does
+// has enough priviledges to run osbuild
+var enoughPrivsForOsbuild = func() (bool, error) {
+	if os.Getuid() != 0 {
+		return false, nil
+	}
+
+	caps, err := capability.NewPid2(0)
+	if err != nil {
+		return false, err
+	}
+	if err := caps.Load(); err != nil {
+		return false, err
+	}
+	if !caps.Get(capability.EFFECTIVE, capability.CAP_SYS_ADMIN) {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 // XXX: merge variant back into images/pkg/osbuild/osbuild-exec.go
 // or into a new pkg/osbuild{,/}run/run.go
 func RunOSBuild(pb ProgressBar, manifest []byte, exports []string, opts *OSBuildOptions) error {
 	if opts == nil {
 		opts = &OSBuildOptions{}
+	}
+
+	enoughPrivs, err := enoughPrivsForOsbuild()
+	if err != nil {
+		return fmt.Errorf("cannot check priviledges: %w", err)
+	}
+	if !enoughPrivs {
+		return fmt.Errorf("not enough priviledges: must be root with CAP_SYS_ADMIN")
 	}
 
 	// To keep maximum compatibility keep the old behavior to run osbuild

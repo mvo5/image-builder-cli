@@ -156,3 +156,24 @@ def test_container_manifest_seeded_is_the_same(build_container, use_seed_arg):
     else:
         print(cmd)
         assert len(manifests) == 3
+
+
+@pytest.mark.skipif(os.getuid() != 0, reason="must be run as root")
+def test_container_unpriveleged_root_errors(tmp_path, build_container):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    os.makedirs("./store", exist_ok=True)
+    p = subprocess.run([
+        "podman", "run", "--rm",
+        # note that --priviledged is missing
+        "-v", f"{output_dir}:/output",
+        build_container,
+        "build",
+        "qcow2",
+        "--distro", "centos-9",
+        "--verbose",
+    ], check=False, text=True, capture_output=True)
+    assert p.returncode == 1
+    assert "error: not enough priviledges: must be root with CAP_SYS_ADMIN" in p.stderr
+
