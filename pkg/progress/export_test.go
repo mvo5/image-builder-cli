@@ -12,6 +12,7 @@ type (
 
 var (
 	NewSyncedWriter = newSyncedWriter
+	WaitForFiles    = waitForFiles
 )
 
 func MockOsStdout(w io.Writer) (restore func()) {
