@@ -33,6 +33,10 @@ type OSBuildOptions struct {
 // enoughPrivsForOsbuild() returns true if the current process does
 // has enough priviledges to run osbuild
 var enoughPrivsForOsbuild = func() (bool, error) {
+	if experimentalflags.Bool("skip-priv-checks") {
+		return true, nil
+	}
+
 	if os.Getuid() != 0 {
 		return false, nil
 	}

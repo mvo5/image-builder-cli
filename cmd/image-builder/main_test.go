@@ -161,6 +161,7 @@ func TestManifestIntegrationSmoke(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -361,6 +362,7 @@ func TestBuildIntegrationHappy(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -422,6 +424,7 @@ func TestBuildIntegrationArgs(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -511,6 +514,7 @@ func TestBuildIntegrationErrorsProgressVerbose(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -545,6 +549,7 @@ func TestBuildIntegrationErrorsProgressVerboseWithBuildlog(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -594,6 +599,7 @@ func TestBuildIntegrationErrorsProgressTerm(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -823,6 +829,7 @@ func TestBuildCrossArchSmoke(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
@@ -875,6 +882,7 @@ func TestBuildIntegrationOutputFilename(t *testing.T) {
 	if !hasDepsolveDnf() {
 		t.Skip("no osbuild-depsolve-dnf binary found")
 	}
+	t.Setenv("IMAGE_BUILDER_EXPERIMENTAL", "skip-priv-checks")
 
 	restore := main.MockNewRepoRegistry(testrepos.New)
 	defer restore()
