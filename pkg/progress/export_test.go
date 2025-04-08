@@ -2,6 +2,7 @@ package progress
 
 import (
 	"io"
+	"strings"
 )
 
 type (
@@ -13,6 +14,10 @@ type (
 var (
 	NewSyncedWriter = newSyncedWriter
 	WaitForFiles    = waitForFiles
+
+	SuperminPrepare = superminPrepare
+	SuperminBuild   = superminBuild
+	SuperminQemu    = superminQemu
 )
 
 func MockOsStdout(w io.Writer) (restore func()) {
@@ -52,5 +57,13 @@ func MockEnoughPrivsForOsbuild(new func() (bool, error)) (restore func()) {
 	enoughPrivsForOsbuild = new
 	return func() {
 		enoughPrivsForOsbuild = saved
+	}
+}
+
+func MockSuperminInitScriptOsbuildPath(new string) (restore func()) {
+	saved := superminInitScriptFmt
+	superminInitScriptFmt = strings.Replace(superminInitScriptFmt, "/usr/bin/osbuild", new, -1)
+	return func() {
+		superminInitScriptFmt = saved
 	}
 }

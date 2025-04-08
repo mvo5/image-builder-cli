@@ -2,10 +2,13 @@ package progress
 
 import (
 	"archive/tar"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -64,20 +67,29 @@ echo "Populate /store from host"
 mkdir /store
 rsync -a --exclude=./tmp /host/store/ /store
 
+# XXX: use udev instead?
+OSBUILD_SERIAL_PORT=/dev/$(basename $(dirname $(grep -H osbuild_serial_port /sys/class/virtio-ports/*/name | cut -f1 -d:)))
+echo "Using serial port $OSBUILD_SERIAL_PORT"
+
 # fetch/cache sources first so that the host cache gets updated
 echo "Fetching sources"
-osbuild \
+/usr/bin/osbuild \
   --cache /store \
-  /output/manifest.json
+  /output/manifest.json > $OSBUILD_SERIAL_PORT 2>&1
 # rsync
 rsync -a --exclude=./tmp /store/ /host/store
 
 echo "Running osbuild"
-osbuild \
+/usr/bin/osbuild \
   --export %s \
   --output-directory /output \
   --cache /store \
-  /output/manifest.json
+  /output/manifest.json > $OSBUILD_SERIAL_PORT 2>&1
+
+# XXX: replace with random token that we inject to avoid
+# pre-existing files to match
+echo "Finishing"
+echo  > /output/build.success
 
 # trigger clean shutdown via sysreq
 echo _suo > /proc/sysrq-trigger
@@ -199,7 +211,9 @@ func setupVirtiofsd(tmpDir, outputDir, storeDir string) (cleanup func(), err err
 		// run virtiofsd in user namespace if non-root to make
 		// chown() and friends inside the VM work
 		if os.Getuid() != 0 {
-			args = append(args, "podman", "unshare", "--")
+			// not using "podman unshare" here so that this
+			// works inside a toolbox session
+			args = append(args, "unshare", "-r", "--map-root-user", "--")
 		}
 		// if this runs as root we will be inside a unprivileged
 		// container so we need won't be able to do most of the
@@ -217,6 +231,7 @@ func setupVirtiofsd(tmpDir, outputDir, storeDir string) (cleanup func(), err err
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Pdeathsig: syscall.SIGTERM,
 		}
+		cmd.Env = append(cmd.Env, "RUST_LOG=ERROR")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Start(); err != nil {
@@ -229,6 +244,114 @@ func setupVirtiofsd(tmpDir, outputDir, storeDir string) (cleanup func(), err err
 	}
 
 	return cleanupFunc, nil
+}
+
+func dropAnsi(in string) string {
+	// XXX: very crude
+	return strings.Replace(in, "\x1B", "ESC", -1)
+}
+
+func superminQemu(superminTmp, runDir, outputDir, storeDir string) error {
+	// map /output, /store into VM
+	cleanup, err := setupVirtiofsd(superminTmp, outputDir, storeDir)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	kernelSerialLog := filepath.Join(superminTmp, "boot.log")
+	if err := os.WriteFile(kernelSerialLog, nil, 0644); err != nil {
+		return fmt.Errorf("cannot write kernel serial log: %w", err)
+	}
+	osbuildSerialLog := filepath.Join(superminTmp, "osbuild.log")
+	if err := os.WriteFile(osbuildSerialLog, nil, 0644); err != nil {
+		return fmt.Errorf("cannot write osbuild serial log: %w", err)
+	}
+
+	stopSerialLog := make(chan bool)
+	defer close(stopSerialLog)
+	go func() {
+		f, err := os.Open(osbuildSerialLog)
+		if err != nil {
+			panic(err)
+		}
+		for {
+			select {
+			case <-time.After(10 * time.Millisecond):
+				io.Copy(os.Stdout, f)
+			case <-stopSerialLog:
+				return
+			}
+		}
+	}()
+
+	// XXX: should we add/use
+	// -device isa-debug-exit,iobase=0xf4,iosize=0x04
+	// outb(0xf4, 0x01); (will exit with exit code 1)
+	// for communicating errors?
+	var qemuLog bytes.Buffer
+	cmd := exec.Command(
+		"qemu-kvm",
+		"-nodefaults", "-nographic",
+		"-accel", "kvm",
+		"-cpu", "host",
+		"-m", "4G",
+		// exit on reboot, we need this to catch crashes in the init
+		// shell script
+		"-no-reboot",
+		// XXX: see colins osbuildbootc/cosa for $arch specific setup
+		// for qemu
+		"-netdev", "user,id=eth0",
+		"-device", "virtio-net-pci,netdev=eth0",
+		"-object", "memory-backend-memfd,id=mem,size=4G,share=on",
+		"-numa", "node,memdev=mem",
+		// supermin generates those
+		"-kernel", filepath.Join(runDir, "kernel"),
+		"-initrd", filepath.Join(runDir, "initrd"),
+		// virtiosfds stuff
+		"-chardev", "socket,id=char0,path="+superminTmp+"/vfsd_output.sock",
+		"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=osbuild_output",
+		"-chardev", "socket,id=char1,path="+superminTmp+"/vfsd_store.sock",
+		"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char1,tag=osbuild_store",
+		"-hda", filepath.Join(runDir, "root"),
+		// we want osbuild to output to its own serial
+		// XXX: use named pipe?
+		"-chardev", fmt.Sprintf("file,id=osbuild_serial,path=%s", osbuildSerialLog),
+		"-device", "virtio-serial",
+		"-device", "virtserialport,chardev=osbuild_serial,name=osbuild_serial_port",
+		// we want a kernel logfile in case anything goes wrong
+		"-chardev", fmt.Sprintf("file,id=kern_log,path=%s", kernelSerialLog),
+		"-serial", "chardev:kern_log",
+		// XXX: see colins osbuildbootc/cosa for $arch options here
+		"-append", "console=ttyS0 quiet root=/dev/sda",
+	)
+	cmd.Stdout = &qemuLog
+	cmd.Stderr = &qemuLog
+	if err := cmd.Run(); err != nil {
+		kernelSerialOutput, logErr := os.ReadFile(kernelSerialLog)
+		if logErr != nil {
+			kernelSerialOutput = []byte(logErr.Error())
+		}
+		return fmt.Errorf("error running qemu: %w:output:\n%s\nkernel log:\n%s", err, qemuLog.String(), dropAnsi(string(kernelSerialOutput)))
+	}
+	// XXX: handle errors
+	kernelSerialOutput, _ := os.ReadFile(kernelSerialLog)
+	osbuildSerialOutput, _ := os.ReadFile(osbuildSerialLog)
+
+	successStamp := filepath.Join(outputDir, "build.success")
+	if _, err := os.Stat(successStamp); err != nil {
+		return fmt.Errorf("build failed. boot log:\n%s\nosbuild log:\n%ss", dropAnsi(string(kernelSerialOutput)), osbuildSerialOutput)
+	}
+
+	// XXX: move into the supermin_test.go and check that boot looks
+	// okay-ish(?)
+	/*
+		println("kernel")
+		println(dropAnsi(string(kernelSerialOutput)))
+		println("serial")
+		println(dropAnsi(string(osbuildSerialOutput)))
+	*/
+	return nil
 }
 
 func runOSBuildWithSupermin(pbar ProgressBar, manifest []byte, exports []string, opts *OSBuildOptions) error {
@@ -270,39 +393,5 @@ func runOSBuildWithSupermin(pbar ProgressBar, manifest []byte, exports []string,
 	}
 	defer os.Remove(manifestPath)
 
-	// map /output, /store into VM
-	cleanup, err := setupVirtiofsd(superminTmp, opts.OutputDir, opts.StoreDir)
-	if err != nil {
-		return err
-	}
-	defer cleanup()
-
-	return util.RunCmdSync(
-		"qemu-kvm",
-		"-nodefaults", "-nographic",
-		"-accel", "kvm",
-		"-cpu", "host",
-		"-m", "4G",
-		// exit on reboot, we need this to catch crashes in the init
-		// shell script
-		"-no-reboot",
-		// XXX: see colins osbuildbootc/cosa for $arch specific setup
-		// for qemu
-		"-netdev", "user,id=eth0",
-		"-device", "virtio-net-pci,netdev=eth0",
-		"-object", "memory-backend-memfd,id=mem,size=4G,share=on",
-		"-numa", "node,memdev=mem",
-		// supermin generates those
-		"-kernel", filepath.Join(runDir, "kernel"),
-		"-initrd", filepath.Join(runDir, "initrd"),
-		// virtiosfds stuff
-		"-chardev", "socket,id=char0,path="+superminTmp+"/vfsd_output.sock",
-		"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=osbuild_output",
-		"-chardev", "socket,id=char1,path="+superminTmp+"/vfsd_store.sock",
-		"-device", "vhost-user-fs-pci,queue-size=1024,chardev=char1,tag=osbuild_store",
-		// XXX: see colins osbuildbootc/cosa for $arch options
-		"-hda", filepath.Join(runDir, "root"),
-		"-serial", "stdio",
-		"-append", "console=ttyS0 quiet root=/dev/sda",
-	)
+	return superminQemu(superminTmp, runDir, opts.OutputDir, opts.StoreDir)
 }
