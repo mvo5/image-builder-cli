@@ -10,21 +10,21 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-
 	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
-	"github.com/osbuild/image-builder-cli/pkg/progress"
 	"github.com/osbuild/images/pkg/arch"
 	"github.com/osbuild/images/pkg/customizations/subscription"
+	"github.com/osbuild/images/pkg/dnfjson"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
 
 	"github.com/osbuild/image-builder-cli/internal/blueprintload"
 	"github.com/osbuild/image-builder-cli/internal/olog"
+	"github.com/osbuild/image-builder-cli/pkg/progress"
 )
 
 var (
@@ -133,9 +133,11 @@ func subscriptionImageOptions(cmd *cobra.Command) (*subscription.ImageOptions, e
 
 type cmdManifestWrapperOptions struct {
 	useBootstrapIfNeeded bool
+	// depsolveResultCb is the callback to use when there is a depsolve result
+	depsolveResultCb func(res map[string]dnfjson.DepsolveResult) error
 }
 
-func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, w io.Writer, wd io.Writer, wrapperOpts *cmdManifestWrapperOptions) (*imagefilter.Result, error) {
+func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, w, wd io.Writer, wrapperOpts *cmdManifestWrapperOptions) (*imagefilter.Result, error) {
 	if wrapperOpts == nil {
 		wrapperOpts = &cmdManifestWrapperOptions{}
 	}
@@ -239,7 +241,8 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		CustomSeed:     customSeed,
 		Subscription:   subscription,
 
-		ForceRepos: forceRepos,
+		ForceRepos:       forceRepos,
+		DepsolveResultCb: wrapperOpts.depsolveResultCb,
 	}
 	opts.UseBootstrapContainer = wrapperOpts.useBootstrapIfNeeded && (img.Arch.Name() != arch.Current().String())
 	if opts.UseBootstrapContainer {
@@ -467,6 +470,16 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	manifestCmd.Flags().Bool("with-sbom", false, `export SPDX SBOM document`)
 	manifestCmd.Flags().String("registrations", "", `filename of a registrations file with e.g. subscription details`)
 	rootCmd.AddCommand(manifestCmd)
+
+	depsolveCmd := &cobra.Command{
+		Use:          "depsolve <image-type>",
+		Short:        "Depsolve the given image-type, e.g. qcow2 (tip: combine with --distro, --arch)",
+		RunE:         cmdDepsolve,
+		SilenceUsage: true,
+		Args:         cobra.MinimumNArgs(1),
+	}
+	depsolveCmd.Flags().AddFlagSet(manifestCmd.Flags())
+	rootCmd.AddCommand(depsolveCmd)
 
 	uploadCmd := &cobra.Command{
 		Use:          "upload <image-path>",

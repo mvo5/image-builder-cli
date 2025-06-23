@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,10 +10,12 @@ import (
 
 	"github.com/osbuild/images/pkg/customizations/subscription"
 	"github.com/osbuild/images/pkg/distro"
+	"github.com/osbuild/images/pkg/dnfjson"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/manifestgen"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
+	"github.com/osbuild/images/pkg/rpmmd"
 	"github.com/osbuild/images/pkg/sbom"
 
 	"github.com/osbuild/image-builder-cli/internal/blueprintload"
@@ -30,6 +33,8 @@ type manifestOptions struct {
 
 	ForceRepos            []string
 	UseBootstrapContainer bool
+
+	DepsolveResultCb func(res map[string]dnfjson.DepsolveResult) error
 }
 
 func sbomWriter(outputDir, filename string, content io.Reader) error {
@@ -51,13 +56,24 @@ func sbomWriter(outputDir, filename string, content io.Reader) error {
 }
 
 // used in tests
-var manifestgenDepsolver manifestgen.DepsolveFunc
+var manifestgenDepsolver = manifestgen.DefaultDepsolver
 
 func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Result, output io.Writer, depsolveWarningsOutput io.Writer, opts *manifestOptions) error {
 	repos, err := newRepoRegistry(dataDir, extraRepos)
 	if err != nil {
 		return err
 	}
+
+	observingDepsolver := func(cacheDir string, depsolveWarningsOutput io.Writer, packageSets map[string][]rpmmd.PackageSet, d distro.Distro, arch string) (map[string]dnfjson.DepsolveResult, error) {
+		res, err := manifestgenDepsolver(cacheDir, depsolveWarningsOutput, packageSets, d, arch)
+		if opts.DepsolveResultCb != nil {
+			if errCb := opts.DepsolveResultCb(res); errCb != nil {
+				return res, errors.Join(err, errCb)
+			}
+		}
+		return res, err
+	}
+
 	// XXX: add --rpmmd/cachedir option like bib
 	manifestGenOpts := &manifestgen.Options{
 		Output:                 output,
@@ -65,7 +81,7 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		RpmDownloader:          opts.RpmDownloader,
 		UseBootstrapContainer:  opts.UseBootstrapContainer,
 		CustomSeed:             opts.CustomSeed,
-		Depsolver:              manifestgenDepsolver,
+		Depsolver:              observingDepsolver,
 	}
 	if opts.WithSBOM {
 		outputDir := basenameFor(img, opts.OutputDir)
