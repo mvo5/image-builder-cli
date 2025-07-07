@@ -174,6 +174,10 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 	if err != nil {
 		return nil, err
 	}
+	bootcRef, err := cmd.Flags().GetString("bootc-ref")
+	if err != nil {
+		return nil, err
+	}
 	useLibrepo, err := cmd.Flags().GetBool("use-librepo")
 	if err != nil {
 		return nil, err
@@ -238,6 +242,7 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		WithSBOM:       withSBOM,
 		CustomSeed:     customSeed,
 		Subscription:   subscription,
+		BootcRef:       bootcRef,
 
 		ForceRepos: forceRepos,
 	}
@@ -463,6 +468,8 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	manifestCmd.Flags().String("ostree-ref", "", `OSTREE reference`)
 	manifestCmd.Flags().String("ostree-parent", "", `OSTREE parent`)
 	manifestCmd.Flags().String("ostree-url", "", `OSTREE url`)
+	// XXX: make nice
+	manifestCmd.Flags().String("bootc-ref", "", `bootc ref`)
 	manifestCmd.Flags().Bool("use-librepo", true, `use librepo to download packages (disable if you use old versions of osbuild)`)
 	manifestCmd.Flags().Bool("with-sbom", false, `export SPDX SBOM document`)
 	manifestCmd.Flags().String("registrations", "", `filename of a registrations file with e.g. subscription details`)

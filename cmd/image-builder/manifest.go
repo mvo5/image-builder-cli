@@ -27,6 +27,7 @@ type manifestOptions struct {
 	RpmDownloader  osbuild.RpmDownloader
 	WithSBOM       bool
 	CustomSeed     *int64
+	BootcRef       string
 
 	ForceRepos            []string
 	UseBootstrapContainer bool
@@ -92,10 +93,13 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		return err
 	}
 	var imgOpts *distro.ImageOptions
-	if opts.Ostree != nil || opts.Subscription != nil {
+	if opts.Ostree != nil || opts.Subscription != nil || opts.BootcRef != "" {
+		panic("meep")
 		imgOpts = &distro.ImageOptions{
 			OSTree:       opts.Ostree,
 			Subscription: opts.Subscription,
+			BootcImgref:  &opts.BootcRef,
+			// XXX: add BootcBuildImgRef
 		}
 	}
 
