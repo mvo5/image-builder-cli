@@ -19,6 +19,7 @@ import (
 	"github.com/osbuild/image-builder-cli/pkg/progress"
 	"github.com/osbuild/images/pkg/arch"
 	"github.com/osbuild/images/pkg/customizations/subscription"
+	"github.com/osbuild/images/pkg/distro/bootc"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
@@ -198,6 +199,10 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 	if err != nil {
 		return nil, err
 	}
+	bootcRef, err := cmd.Flags().GetString("bootc-ref")
+	if err != nil {
+		return nil, err
+	}
 	// no error check here as this is (deliberately) not defined on
 	// "manifest" (if "images" learn to set the output filename in
 	// manifests we would change this
@@ -221,7 +226,14 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		ExtraRepos: extraRepos,
 		ForceRepos: forceRepos,
 	}
-	img, err := getOneImage(distroStr, imgTypeStr, archStr, repoOpts)
+	var img *imagefilter.Result
+	if bootcRef != "" {
+		// XXX: this is a hack, we need a cleaner
+		// way as currently this clobbers "datadir"
+		img, dataDir, err = bootc.FromRef(bootcRef, imgTypeStr, archStr)
+	} else {
+		img, err = getOneImage(distroStr, imgTypeStr, archStr, repoOpts)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -234,6 +246,7 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		OutputFilename: outputFilename,
 		BlueprintPath:  blueprintPath,
 		Ostree:         ostreeImgOpts,
+		BootcRef:       bootcRef,
 		RpmDownloader:  rpmDownloader,
 		WithSBOM:       withSBOM,
 		CustomSeed:     customSeed,
@@ -463,6 +476,7 @@ operating systems like Fedora, CentOS and RHEL with easy customizations support.
 	manifestCmd.Flags().String("ostree-ref", "", `OSTREE reference`)
 	manifestCmd.Flags().String("ostree-parent", "", `OSTREE parent`)
 	manifestCmd.Flags().String("ostree-url", "", `OSTREE url`)
+	manifestCmd.Flags().String("bootc-ref", "", `bootc container ref`)
 	manifestCmd.Flags().Bool("use-librepo", true, `use librepo to download packages (disable if you use old versions of osbuild)`)
 	manifestCmd.Flags().Bool("with-sbom", false, `export SPDX SBOM document`)
 	manifestCmd.Flags().String("registrations", "", `filename of a registrations file with e.g. subscription details`)
