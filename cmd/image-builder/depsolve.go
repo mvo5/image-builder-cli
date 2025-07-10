@@ -40,6 +40,8 @@ func cmdDepsolve(cmd *cobra.Command, args []string) error {
 			return nil
 		},
 	}
+
+	// XXX: add support for args[1:] as extra packages to depsolve
 	if _, err = cmdManifestWrapper(pbar, cmd, args, manifestOut, depsolveWarnings, opts); err != nil {
 		return err
 	}
