@@ -23,6 +23,7 @@ type manifestOptions struct {
 	OutputFilename string
 	BlueprintPath  string
 	Ostree         *ostree.ImageOptions
+	BootcRef       string
 	Subscription   *subscription.ImageOptions
 	RpmDownloader  osbuild.RpmDownloader
 	WithSBOM       bool
@@ -91,12 +92,13 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 	if err != nil {
 		return err
 	}
-	var imgOpts *distro.ImageOptions
-	if opts.Ostree != nil || opts.Subscription != nil {
-		imgOpts = &distro.ImageOptions{
-			OSTree:       opts.Ostree,
-			Subscription: opts.Subscription,
-		}
+	imgOpts := &distro.ImageOptions{
+		OSTree:       opts.Ostree,
+		Subscription: opts.Subscription,
+		Bootc: &distro.BootcRef{
+			Imgref: &opts.BootcRef,
+			// XXX: add BuildImgref
+		},
 	}
 
 	return mg.Generate(bp, img.Distro, img.ImgType, img.Arch, imgOpts)
