@@ -19,7 +19,7 @@ import (
 	"github.com/osbuild/image-builder-cli/pkg/progress"
 	"github.com/osbuild/images/pkg/arch"
 	"github.com/osbuild/images/pkg/customizations/subscription"
-	"github.com/osbuild/images/pkg/distro/generic"
+	"github.com/osbuild/images/pkg/distro/bootc"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
@@ -229,7 +229,15 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 
 	var img *imagefilter.Result
 	if bootcRef != "" {
-		imgType, err := generic.ImageFromBootc(bootcRef, imgTypeStr, archStr)
+		distro, err := bootc.NewBootcDistro(bootcRef)
+		if err != nil {
+			return nil, err
+		}
+		archi, err := distro.GetArch(archStr)
+		if err != nil {
+			return nil, err
+		}
+		imgType, err := archi.GetImageType(imgTypeStr)
 		if err != nil {
 			return nil, err
 		}

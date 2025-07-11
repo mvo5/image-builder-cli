@@ -98,10 +98,6 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		Facts:        &facts.ImageOptions{APIType: facts.IBCLI_APITYPE},
 		OSTree:       opts.Ostree,
 		Subscription: opts.Subscription,
-		Bootc: &distro.BootcRef{
-			Imgref: &opts.BootcRef,
-			// XXX: add BuildImgref
-		},
 	}
 
 	return mg.Generate(bp, img.Distro, img.ImgType, img.Arch, imgOpts)
