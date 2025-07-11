@@ -21,6 +21,7 @@ import (
 	"github.com/osbuild/images/pkg/customizations/subscription"
 	"github.com/osbuild/images/pkg/distro/bootc"
 	"github.com/osbuild/images/pkg/imagefilter"
+	"github.com/osbuild/images/pkg/manifestgen"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
 
@@ -229,8 +230,13 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 	var img *imagefilter.Result
 	if bootcRef != "" {
 		// XXX: this is a hack, we need a cleaner
-		// way as currently this clobbers "datadir"
-		img, dataDir, err = bootc.FromRef(bootcRef, imgTypeStr, archStr)
+		// way as currently this is racy and wrong
+		var depsolver manifestgen.DepsolveFunc
+		img, depsolver, dataDir, err = bootc.FromRef(bootcRef, imgTypeStr, archStr)
+		// HACKKKKKKK, we need to pass our custom depsolver and
+		// also indicate to images that it should ignore
+		// reporegistry
+		manifestgenDepsolver = depsolver
 	} else {
 		img, err = getOneImage(distroStr, imgTypeStr, archStr, repoOpts)
 	}
