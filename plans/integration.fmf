@@ -1,0 +1,14 @@
+summary: Basic smoke test for image-builder
+
+prepare:
+  how: install
+  package:
+    - podman
+    - pytest
+    - python3-pip
+
+execute:
+  how: tmt
+  script: |
+    pip install --user -r test/requirements.txt
+    pytest
