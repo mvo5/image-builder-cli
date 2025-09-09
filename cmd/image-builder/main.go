@@ -256,7 +256,9 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		// XXX: hack to skip repo loading for the bootc image.
 		// We need to add a SkipRepositories or similar to
 		// manifestgen instead to make this clean
-		forceRepos = []string{"https://example.com/not-used"}
+		//XXX: we can only set this for disk but must not set
+		// for ISO :(
+		//forceRepos = []string{"https://example.com/not-used"}
 	} else {
 		repoOpts := &repoOptions{
 			DataDir:    dataDir,
