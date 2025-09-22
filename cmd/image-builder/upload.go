@@ -32,15 +32,6 @@ var ErrUploadTypeUnsupported = errors.New("unsupported type")
 var awscloudNewUploader = awscloud.NewUploader
 var libvirtNewUploader = libvirt.NewUploader
 
-func uploadImageWithoutProgress(uploader cloud.Uploader, imagePath string) error {
-	f, err := os.Open(imagePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return uploader.UploadAndRegister(nil, f, osStderr)
-}
-
 func uploadImageWithProgress(uploader cloud.Uploader, imagePath string) error {
 	f, err := os.Open(imagePath)
 	if err != nil {
@@ -60,7 +51,11 @@ func uploadImageWithProgress(uploader cloud.Uploader, imagePath string) error {
 	pbar.Start()
 	defer pbar.Finish()
 
-	return uploader.UploadAndRegister(r, f, osStderr)
+	if err := uploader.UploadAndRegister(r, st.Size(), osStderr); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func uploaderCheckWithProgress(pbar progress.ProgressBar, uploader cloud.Uploader) error {
