@@ -138,7 +138,12 @@ type cmdManifestWrapperOptions struct {
 	useBootstrapIfNeeded bool
 }
 
-func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, w io.Writer, wd io.Writer, wrapperOpts *cmdManifestWrapperOptions) (*imagefilter.Result, error) {
+type manifestResult struct {
+	Image           *imagefilter.Result
+	OsbuildManifest []byte
+}
+
+func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, warningsWriter io.Writer, wrapperOpts *cmdManifestWrapperOptions) (*manifestResult, error) {
 	if wrapperOpts == nil {
 		wrapperOpts = &cmdManifestWrapperOptions{}
 	}
@@ -317,8 +322,14 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		fmt.Fprintf(os.Stderr, "WARNING: using experimental cross-architecture building to build %q\n", img.ImgType.Arch().Name())
 	}
 
-	err = generateManifest(dataDir, extraRepos, img, w, wd, opts)
-	return img, err
+	osbuildManifest, err := generateManifest(dataDir, extraRepos, img, warningsWriter, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &manifestResult{
+		OsbuildManifest: osbuildManifest,
+		Image:           img,
+	}, nil
 }
 
 func cmdManifest(cmd *cobra.Command, args []string) error {
@@ -326,8 +337,14 @@ func cmdManifest(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = cmdManifestWrapper(pbar, cmd, args, osStdout, io.Discard, nil)
-	return err
+	res, err := cmdManifestWrapper(pbar, cmd, args, io.Discard, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := osStdout.Write(res.OsbuildManifest); err != nil {
+		return err
+	}
+	return nil
 }
 
 func progressFromCmd(cmd *cobra.Command) (progress.ProgressBar, error) {
@@ -400,13 +417,13 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 
 	// We discard any warnings from the depsolver until we figure out a better
 	// idea (likely in manifestgen)
-	res, err := cmdManifestWrapper(pbar, cmd, args, &mf, io.Discard, opts)
+	res, err := cmdManifestWrapper(pbar, cmd, args, io.Discard, opts)
 	if err != nil {
 		return err
 	}
 
-	bootMode := res.ImgType.BootMode()
-	uploader, err := uploaderFor(cmd, res.ImgType.Name(), res.ImgType.Arch().Name(), &bootMode)
+	bootMode := res.Image.ImgType.BootMode()
+	uploader, err := uploaderFor(cmd, res.Image.ImgType.Name(), res.Image.ImgType.Arch().Name(), &bootMode)
 	if errors.Is(err, ErrUploadTypeUnsupported) || errors.Is(err, ErrUploadConfigNotProvided) {
 		err = nil
 	}
@@ -421,7 +438,7 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
-	outputDir = basenameFor(res, outputDir)
+	outputDir = basenameFor(res.Image, outputDir)
 
 	buildOpts := &buildOptions{
 		OutputDir:      outputDir,
@@ -432,7 +449,7 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 		Metrics:        withMetrics,
 	}
 	pbar.SetPulseMsgf("Image building step")
-	imagePath, err := buildImage(pbar, res, mf.Bytes(), buildOpts)
+	imagePath, err := buildImage(pbar, res.Image, mf.Bytes(), buildOpts)
 	if err != nil {
 		return err
 	}

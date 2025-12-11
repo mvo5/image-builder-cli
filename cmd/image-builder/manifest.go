@@ -58,11 +58,10 @@ func sbomWriter(outputDir, filename string, content io.Reader) error {
 // used in tests
 var manifestgenDepsolver manifestgen.DepsolveFunc
 
-// XXX: just return []byte instead of using output writer
-func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Result, output io.Writer, depsolveWarningsOutput io.Writer, opts *manifestOptions) error {
+func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Result, depsolveWarningsOutput io.Writer, opts *manifestOptions) ([]byte, error) {
 	repos, err := newRepoRegistry(dataDir, extraRepos)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	manifestGenOpts := &manifestgen.Options{
 		DepsolveWarningsOutput: depsolveWarningsOutput,
@@ -82,7 +81,7 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 	if len(opts.ForceRepos) > 0 {
 		forcedRepos, err := parseRepoURLs(opts.ForceRepos, "forced")
 		if err != nil {
-			return err
+			return nil, err
 		}
 		manifestGenOpts.OverrideRepos = forcedRepos
 	}
@@ -92,12 +91,12 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 
 	mg, err := manifestgen.New(repos, manifestGenOpts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	bp, err := blueprintload.Load(opts.BlueprintPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	imgOpts := &distro.ImageOptions{
@@ -109,12 +108,5 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		},
 	}
 
-	mf, err := mg.Generate(bp, img.ImgType, imgOpts)
-	if err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(output, "%s\n", mf); err != nil {
-		return err
-	}
-	return nil
+	return mg.Generate(bp, img.ImgType, imgOpts)
 }
