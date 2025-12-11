@@ -8,12 +8,14 @@ import (
 	"strings"
 
 	"github.com/osbuild/images/pkg/customizations/subscription"
+	"github.com/osbuild/images/pkg/depsolvednf"
 	"github.com/osbuild/images/pkg/distro"
 	"github.com/osbuild/images/pkg/imagefilter"
 	"github.com/osbuild/images/pkg/manifestgen"
 	"github.com/osbuild/images/pkg/osbuild"
 	"github.com/osbuild/images/pkg/ostree"
 	"github.com/osbuild/images/pkg/rhsm/facts"
+	"github.com/osbuild/images/pkg/rpmmd"
 	"github.com/osbuild/images/pkg/sbom"
 
 	"github.com/osbuild/image-builder-cli/internal/blueprintload"
@@ -58,10 +60,10 @@ func sbomWriter(outputDir, filename string, content io.Reader) error {
 // used in tests
 var manifestgenDepsolver manifestgen.DepsolveFunc
 
-func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Result, depsolveWarningsOutput io.Writer, opts *manifestOptions) ([]byte, error) {
+func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Result, depsolveWarningsOutput io.Writer, opts *manifestOptions) ([]byte, *mTLSConfig, error) {
 	repos, err := newRepoRegistry(dataDir, extraRepos)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	manifestGenOpts := &manifestgen.Options{
 		DepsolveWarningsOutput: depsolveWarningsOutput,
@@ -81,7 +83,7 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 	if len(opts.ForceRepos) > 0 {
 		forcedRepos, err := parseRepoURLs(opts.ForceRepos, "forced")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		manifestGenOpts.OverrideRepos = forcedRepos
 	}
@@ -89,14 +91,32 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		manifestGenOpts.WarningsOutput = os.Stderr
 	}
 
+	// XXX: gross, find something better
+	var mTLS *mTLSConfig
+	if img.ImgType.Name() == "anaconda-iso" {
+		manifestGenOpts.Depsolve = func(solver *depsolvednf.Solver, cacheDir string, depsolveWarningsOutput io.Writer, packageSets map[string][]rpmmd.PackageSet, d distro.Distro, arch string) (map[string]depsolvednf.DepsolveResult, error) {
+			depsolveResult, err := manifestgen.DefaultDepsolve(solver, cacheDir, depsolveWarningsOutput, packageSets, d, arch)
+
+			depsolvedRepos := make(map[string][]rpmmd.RepoConfig)
+			for k, v := range depsolveResult {
+				depsolvedRepos[k] = v.Repos
+			}
+			mTLS, err = extractTLSKeys(depsolvedRepos)
+			if err != nil {
+				return nil, err
+			}
+			return depsolveResult, err
+		}
+	}
+
 	mg, err := manifestgen.New(repos, manifestGenOpts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	bp, err := blueprintload.Load(opts.BlueprintPath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	imgOpts := &distro.ImageOptions{
@@ -108,5 +128,10 @@ func generateManifest(dataDir string, extraRepos []string, img *imagefilter.Resu
 		},
 	}
 
-	return mg.Generate(bp, img.ImgType, imgOpts)
+	mf, err := mg.Generate(bp, img.ImgType, imgOpts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return mf, mTLS, nil
 }

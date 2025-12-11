@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -141,6 +140,11 @@ type cmdManifestWrapperOptions struct {
 type manifestResult struct {
 	Image           *imagefilter.Result
 	OsbuildManifest []byte
+
+	// needed for bootc-image-builder compatibility
+	ExtraEnv     []string
+	ExtraExports []string
+	Cleanup      func()
 }
 
 func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []string, warningsWriter io.Writer, wrapperOpts *cmdManifestWrapperOptions) (*manifestResult, error) {
@@ -322,14 +326,22 @@ func cmdManifestWrapper(pbar progress.ProgressBar, cmd *cobra.Command, args []st
 		fmt.Fprintf(os.Stderr, "WARNING: using experimental cross-architecture building to build %q\n", img.ImgType.Arch().Name())
 	}
 
-	osbuildManifest, err := generateManifest(dataDir, extraRepos, img, warningsWriter, opts)
+	osbuildManifest, mTLS, err := generateManifest(dataDir, extraRepos, img, warningsWriter, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &manifestResult{
+	res := &manifestResult{
 		OsbuildManifest: osbuildManifest,
 		Image:           img,
-	}, nil
+	}
+	if mTLS != nil {
+		res.ExtraEnv, res.Cleanup, err = prepareOsbuildMTLSConfig(mTLS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to prepare osbuild TLS keys: %w", err)
+		}
+	}
+
+	return res, nil
 }
 
 func cmdManifest(cmd *cobra.Command, args []string) error {
@@ -410,7 +422,6 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 		pbar.Stop()
 	}()
 
-	var mf bytes.Buffer
 	opts := &cmdManifestWrapperOptions{
 		useBootstrapIfNeeded: true,
 	}
@@ -449,7 +460,7 @@ func cmdBuild(cmd *cobra.Command, args []string) error {
 		Metrics:        withMetrics,
 	}
 	pbar.SetPulseMsgf("Image building step")
-	imagePath, err := buildImage(pbar, res.Image, mf.Bytes(), buildOpts)
+	imagePath, err := buildImage(pbar, res, buildOpts)
 	if err != nil {
 		return err
 	}
